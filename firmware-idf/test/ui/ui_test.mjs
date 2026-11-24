@@ -94,8 +94,10 @@ try {
   await page.click('#form-setpw button[type="submit"]');
   await page.waitForSelector('.toast >> text=Settings saved and applied', { timeout: 30000 });
   check(true, 'after the new password the pending save goes through');
-  check(await page.isHidden('#savebar'), 'save bar disappears');
-  check(await page.isHidden('#banner'), 'default-password banner disappears');
+  // Assertions on asynchronous UI state wait for it (with a deadline) instead of sampling once.
+  const becomes = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 5000 }).then(() => true, () => false);
+  check(await becomes(() => document.querySelector('#savebar').hidden), 'save bar disappears');
+  check(await becomes(() => document.querySelector('#banner').hidden), 'default-password banner disappears');
   await page.click('.tabs a[data-view="dashboard"]');
   await page.waitForFunction(() => document.querySelector('#mode-label').textContent.includes('160 kW'), null, { timeout: 10000 });
   check(true, 'dashboard shows the new 160 kW mode');
@@ -103,8 +105,11 @@ try {
   console.log('[ui 3] phone: device and firmware pages');
   await page.click('.tabs a[data-view="device"]');
   await page.waitForFunction(() => document.querySelectorAll('#sys-info dt').length > 8, null, { timeout: 10000 });
-  check(await page.textContent('#pw-badge') === 'Custom', 'password badge shows a custom password');
-  check(await page.inputValue('#form-wifi input[name="ssid"]') === 'Can-bridgeINV', 'Wi-Fi form shows the SSID');
+  check(await becomes(() => document.querySelector('#pw-badge').textContent === 'Custom'),
+    'password badge shows a custom password');
+  // /api/network loads in parallel with /api/system: wait for it as well.
+  check(await becomes(() => document.querySelector('#form-wifi input[name="ssid"]').value === 'Can-bridgeINV'),
+    'Wi-Fi form shows the SSID');
   await shot(page, 'phone-device');
   await page.click('.tabs a[data-view="firmware"]');
   await page.waitForFunction(() => document.querySelector('#fw-version').textContent !== '–', null, { timeout: 10000 });

@@ -559,7 +559,10 @@
     const btn = $('#btn-save');
     setBusy(btn, true);
     try {
-      const r = await withAuth(() => api('/api/settings', { method: 'POST', body: state.draft }));
+      const saved = Object.assign({}, state.draft);
+      const r = await withAuth(() => api('/api/settings', { method: 'POST', body: saved }));
+      state.original = saved; // saved: hide the save bar now, then refresh from the bridge
+      renderSavebar();
       toast(r.message || 'Settings saved');
       await loadSettings();
     } catch (e) {
