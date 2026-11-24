@@ -1,0 +1,7 @@
+# Overlay for the QEMU end-to-end test build - never flash this to a car.
+#   idf.py -B build-qemu -D SDKCONFIG=build-qemu/sdkconfig \
+#          -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.qemu" build
+CONFIG_ETH_USE_OPENETH=y
+CONFIG_BRIDGE_QEMU_OPENETH=y
+# QEMU emulates neither TWAI nor the MCP2515.
+CONFIG_BRIDGE_SELFTEST_REQUIRE_CAN=n

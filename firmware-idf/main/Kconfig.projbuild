@@ -1,0 +1,93 @@
+menu "LEAF inverter bridge"
+
+    menu "VCM bus (ESP32 TWAI)"
+        config BRIDGE_TWAI_TX_GPIO
+            int "TWAI TX GPIO"
+            range 0 33
+            default 5
+        config BRIDGE_TWAI_RX_GPIO
+            int "TWAI RX GPIO"
+            range 0 39
+            default 4
+    endmenu
+
+    menu "Inverter bus (MCP2515)"
+        config BRIDGE_MCP2515_SCK_GPIO
+            int "SPI SCK GPIO"
+            default 26
+        config BRIDGE_MCP2515_MOSI_GPIO
+            int "SPI MOSI GPIO (MCP2515 SI)"
+            default 19
+        config BRIDGE_MCP2515_MISO_GPIO
+            int "SPI MISO GPIO (MCP2515 SO)"
+            default 18
+        config BRIDGE_MCP2515_CS_GPIO
+            int "SPI CS GPIO"
+            default 15
+        config BRIDGE_MCP2515_INT_GPIO
+            int "INT GPIO"
+            default 22
+        config BRIDGE_MCP2515_SPI_HZ
+            int "SPI clock (Hz)"
+            range 1000000 10000000
+            default 8000000
+
+        choice BRIDGE_MCP2515_CRYSTAL
+            prompt "MCP2515 crystal"
+            default BRIDGE_MCP2515_CRYSTAL_8MHZ
+            config BRIDGE_MCP2515_CRYSTAL_8MHZ
+                bool "8 MHz (sample point 75 %)"
+            config BRIDGE_MCP2515_CRYSTAL_16MHZ
+                bool "16 MHz (sample point 87.5 %)"
+        endchoice
+    endmenu
+
+    menu "Wi-Fi access point"
+        config BRIDGE_WIFI_SSID
+            string "SSID"
+            default "Can-bridgeINV"
+        config BRIDGE_WIFI_PASSWORD
+            string "Password (WPA2, at least 8 characters) - CHANGE IT"
+            default "Password"
+            help
+                Anyone on this network can change the torque settings and, with the
+                OTA password, flash firmware. Change it before installing in a car.
+        config BRIDGE_WIFI_CHANNEL
+            int "Channel"
+            range 1 13
+            default 6
+        config BRIDGE_WIFI_MAX_CONNECTIONS
+            int "Maximum clients"
+            range 1 4
+            default 2
+    endmenu
+
+    menu "Firmware update"
+        config BRIDGE_OTA_USERNAME
+            string "OTA user name (HTTP basic auth)"
+            default "admin"
+        config BRIDGE_OTA_PASSWORD
+            string "OTA password (empty = Wi-Fi password)"
+            default ""
+    endmenu
+
+    config BRIDGE_SELFTEST_REQUIRE_CAN
+        bool "OTA self test: roll back unless both CAN controllers start"
+        default y
+        help
+            After a firmware update the new image only confirms itself (cancelling
+            the automatic rollback) if the TWAI node and the MCP2515 both start.
+
+    config BRIDGE_QEMU_OPENETH
+        bool "TEST ONLY: use QEMU OpenCores Ethernet instead of Wi-Fi"
+        depends on ETH_USE_OPENETH
+        default n
+        help
+            For the QEMU end-to-end test (test/qemu_e2e.py). Never enable for hardware.
+
+    config BRIDGE_STATUS_LED_GPIO
+        int "Status LED GPIO (-1 = none)"
+        range -1 33
+        default 2
+
+endmenu
