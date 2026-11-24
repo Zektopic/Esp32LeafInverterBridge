@@ -334,8 +334,22 @@ def run_tests(qemu, args, app_bin):
     check(st == 200 and doc["ok"] and "saved" in doc["message"].lower(), f"settings saved ({st} {doc})")
     msg, seen = ws.recv_until(lambda m: m.get("type") == "settings")
     check(msg is not None, f"settings change announced on the WebSocket ({seen[-5:]})")
-    msg, _ = ws.recv_until(lambda m: m.get("type") == "status" and m["data"]["inverter"]["mode"] == "160")
+    expected = {"110": 0.9, "160": 1.6}
+    mismatched = []
+
+    def consistent_160(m):
+        if m.get("type") != "status":
+            return False
+        inv = m["data"]["inverter"]
+        if expected.get(inv["mode"]) != inv["drive_multiplier"]:
+            mismatched.append((inv["mode"], inv["drive_multiplier"]))
+        return inv["mode"] == "160"
+
+    msg, _ = ws.recv_until(consistent_160)
     check(msg is not None and msg["data"]["inverter"]["drive_multiplier"] == 1.6, "live feed shows the 160 kW mode")
+    for _ in range(4):  # the next few pushes as well
+        consistent_160(ws.recv())
+    check(not mismatched, f"every status message reports a mode with its own multipliers ({mismatched})")
     ws.close()
     st, _, doc = jrequest("POST", "/api/settings", {"Inverter": "160"}, basic(NEW_PASSWORD))
     check(st == 200 and doc["message"] == "No changes", "HTTP basic auth works for scripts; unchanged detected")

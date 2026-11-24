@@ -58,7 +58,8 @@ typedef struct {
     bool ac_charging;
     bool soc_valid;
     uint16_t soc_permille;
-    leaf_inverter_config_t config; /* active translation parameters */
+    bridge_settings_t applied;     /* settings the bridge task has applied ... */
+    leaf_inverter_config_t config; /* ... and the translation parameters derived from them */
     leaf_inverter_stats_t inverter;
     bridge_bus_stats_t bus[LEAF_BUS_COUNT];
     uint32_t queue_overflow;      /* frames dropped because the bridge queue was full */
