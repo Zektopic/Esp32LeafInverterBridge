@@ -45,7 +45,11 @@ async function waitLive(page) {
 }
 
 // Phone screenshots show the viewport (the bottom navigation is fixed); desktop ones the full page.
-const shot = (page, name) => page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: !name.startsWith('phone') });
+// The short wait lets CSS transitions (card highlight, bars) settle first.
+async function shot(page, name) {
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: !name.startsWith('phone') });
+}
 
 const browser = await chromium.launch();
 try {

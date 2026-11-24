@@ -18,6 +18,13 @@ the original Microchip/STM32 boards were hard to source.
 > vehicle. Only install it if you understand the risks, test on a lifted or stationary vehicle first, and
 > check local road-legal requirements. The software is provided **without any warranty** (see [LICENSE](LICENSE)).
 
+| Live dashboard | Settings | First login |
+|---|---|---|
+| <img src="docs/images/ui-phone-dashboard.png" alt="Live dashboard" width="240"> | <img src="docs/images/ui-phone-settings.png" alt="Settings" width="240"> | <img src="docs/images/ui-phone-set-password.png" alt="Forced password change" width="240"> |
+
+*The web UI of the ESP-IDF firmware. It works on a phone over the bridge's own Wi-Fi, with no app and no
+internet connection. See [`firmware-idf/README.md`](firmware-idf/README.md).*
+
 ---
 
 ## Contents
@@ -74,9 +81,10 @@ All of this lives in the hardware-independent [`lib/leaf_can`](lib/leaf_can) lib
 │   ├── leaf_can/          Reusable EV-CAN library: frame type, IDs, CRC-8, signal codecs,
 │   │                      inverter-upgrade state machine, host + differential tests
 │   └── bridge_settings/   Web-UI settings model, JSON parser, NVS key map
-├── firmware-idf/          ESP-IDF 6.1 firmware (recommended), QEMU end-to-end test
+├── firmware-idf/          ESP-IDF 6.1 firmware (recommended): web UI in main/www,
+│                          REST API, QEMU end-to-end and browser tests
 ├── firmware/              Arduino-ESP32 firmware (PlatformIO / Arduino IDE)
-├── web/                   Configuration page shared by both firmwares
+├── web/                   Configuration page of the Arduino firmware (SPIFFS)
 ├── hardware/              Schematic
 ├── docs/specs/            CAN specification slides and the Leaf TX schedule
 └── tools/ci_local.sh      Runs every CI job locally in containers
@@ -112,10 +120,12 @@ The MCP2515 crystal is 8 MHz by default. 16 MHz modules are supported through th
 | | `firmware-idf/` (ESP-IDF 6.1) | `firmware/` (Arduino) |
 |---|---|---|
 | Recommended for | New installs | Existing Arduino users |
-| CAN drivers | ESP-IDF TWAI node driver, own MCP2515 driver | ESP-IDF legacy TWAI driver, ACAN2515 |
-| Web UI | Embedded in the app image (gzip) | SPIFFS (`pio run -t uploadfs`) |
-| Firmware update | `/update`, raw `.bin`, automatic rollback if the new image fails its self test | ElegantOTA at `/update` |
-| Tested | Host tests, QEMU end-to-end (web, NVS, OTA, rollback) | Host tests, build only |
+| CAN drivers | ESP-IDF TWAI node driver, own MCP2515 driver with fault recovery; CAN on CPU 1, network on CPU 0 | ESP-IDF legacy TWAI driver, ACAN2515 |
+| Web UI | Live dashboard (WebSocket), settings, firmware update, device management; embedded in the image (20 KB gzip); captive portal | Settings page from SPIFFS (`pio run -t uploadfs`) |
+| Security | Own admin password required before any change (PBKDF2 hash, sessions, lockout); Wi-Fi password changeable in the UI | Wi-Fi password; OTA password set at build time |
+| Firmware update | From the UI or `curl`, image checked before flashing, automatic rollback if the new image fails its self test | ElegantOTA at `/update` |
+| Diagnostics | Bus error states and counters, latency, task stacks, reset reason, crash-dump download | `/api/status` counters |
+| Tested | Host tests, ~100 QEMU end-to-end checks, browser test (Playwright) | Host tests, build only |
 
 Both read and write the same NVS keys as v1.x, so a device keeps its settings when you update or switch
 between them. Both use the Arduino `default.csv` partition layout.
@@ -128,7 +138,7 @@ Requires ESP-IDF **v6.1** (or use the official container, as below).
 
 ```bash
 cd firmware-idf
-idf.py menuconfig          # "LEAF inverter bridge": pins, Wi-Fi password, OTA password
+idf.py menuconfig          # "LEAF inverter bridge": pins, crystal, factory Wi-Fi / admin passwords
                            # "leaf_can": torque multipliers, 0x1F2 emulation, SOC guard
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
@@ -140,9 +150,9 @@ Without a local ESP-IDF install:
 docker run --rm -v "$PWD":/project -w /project/firmware-idf espressif/idf:v6.1.1 idf.py build
 ```
 
-Later updates can be installed from the browser at `http://192.168.4.1/update` with
-`firmware-idf/build/leaf_inverter_bridge.bin`. This only works with the car in **P**, and an image that does
-not bring both CAN controllers up is rolled back automatically.
+Later updates are installed from the web UI (**Firmware** page) or with `curl` (see
+[`firmware-idf/README.md`](firmware-idf/README.md#firmware-updates)). This only works with the car in **P**,
+and an image that does not bring both CAN controllers up is rolled back automatically.
 
 ### Arduino firmware
 
@@ -173,13 +183,17 @@ the core v1.x was developed on.
 
 ## Configuration
 
-Connect to the Wi-Fi network **`Can-bridgeINV`** and open **http://192.168.4.1/**.
+Connect to the Wi-Fi network **`Can-bridgeINV`** (password `Password`) and open **http://192.168.4.1/**.
+With the ESP-IDF firmware most phones offer to open the page by themselves (captive portal).
 
 > [!IMPORTANT]
-> The default Wi-Fi password is `Password`, and by default it is also the firmware-update password (user `admin`).
-> Change it before installing the bridge in a car: menuconfig → *LEAF inverter bridge → Wi-Fi access point*, or
-> `WIFI_AP_PASSWORD` / `OTA_PASSWORD` in `firmware/config.h`. Anyone who knows it can change the torque
-> settings.
+> **ESP-IDF firmware:** the first login with the factory password asks you to set your own admin password.
+> Until then the bridge refuses every change. Change the Wi-Fi password under *Device → Wi-Fi network*. See the
+> [first-time setup](firmware-idf/README.md#first-time-setup).
+>
+> **Arduino firmware:** the Wi-Fi password is also the firmware-update password (user `admin`). Change
+> `WIFI_AP_PASSWORD` / `OTA_PASSWORD` in `firmware/config.h` before installing the bridge in a car. Anyone who
+> knows it can change the torque settings.
 
 Settings can only be changed with the car in **P**. Writing flash briefly stalls both CPU cores, and a new
 torque map takes effect immediately.
@@ -194,7 +208,7 @@ torque map takes effect immediately.
 | Capacity Boost | on / off | Stored only |
 | Current Control | 1–6 kW, unrestricted | Stored only |
 
-"Stored only" settings are kept in NVS for future features. The web page marks them as *not active yet*.
+"Stored only" settings are kept in NVS for future features. Both web UIs mark them as such.
 
 Build-time tuning (`leaf_can` menuconfig or `-D` defines):
 
@@ -208,19 +222,24 @@ Build-time tuning (`leaf_can` menuconfig or `-D` defines):
 
 ## HTTP API
 
+**ESP-IDF firmware:** a REST API with login, live WebSocket feed, settings, Wi-Fi, diagnostics, restart,
+factory reset and OTA. It is documented in [`firmware-idf/README.md`](firmware-idf/README.md#rest-api).
+
+```console
+$ curl -s http://192.168.4.1/api/status | jq '{shifter, inverter: .inverter.label, torque: .torque}'
+{ "shifter": "P", "inverter": "EM57 motor with 160 kW inverter",
+  "torque": { "vcm_request_nm": 0.00, "out_request_nm": 0.00, "response_nm": 0.0 } }
+```
+
+**Arduino firmware:**
+
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/` | Configuration page |
 | `POST` | `/settings` | JSON body, for example `{"Inverter":"160"}`. Replies `200` saved/unchanged, `400` invalid, `409` not in P, `500` flash error |
 | `GET` | `/api/status` | Firmware version, gear, torque request/response in Nm, SOC, charge state, per-bus RX/TX/drop/bus-off counters |
 | `WS` | `/ws` | Pushes the selected radio-button ids (`Inverter2`, …) on connect and after every change |
-| `GET` | `/update` | Firmware update page (HTTP basic auth) |
-
-```console
-$ curl -s http://192.168.4.1/api/status
-{"firmware":"2.0.0","leaf_can":"2.0.0","uptime_s":42,"inverter_setting":"EM57 motor with 160 kW inverter",
- "shifter":"P","torque_request_vcm_nm":0.00,"torque_request_out_nm":0.00,"torque_response_nm":0.0, ...}
-```
+| `GET` | `/update` | ElegantOTA firmware update page (HTTP basic auth) |
 
 ## Reusing the CAN library
 
@@ -267,7 +286,9 @@ See [`lib/leaf_can/README.md`](lib/leaf_can/README.md) for the full API and inte
 | `leaf_can` unit tests | CRC-8 against the original table and a bitwise implementation, every signal codec over its full range, torque gating/scaling/saturation, emulation timing and sequences, AC-charge and SOC guards | `cmake -S lib/leaf_can -B build && cmake --build build && ctest --test-dir build` |
 | Differential test | Builds the **original v1.3.0 handler** on the host and replays ~1.7 M frames per run of randomised drive traffic through it and through `leaf_can`, comparing every transmitted frame | part of the `leaf_can` ctest run |
 | `bridge_settings` tests | Web-form JSON parsing, rejection paths, v1.3.0 NVS key compatibility | `cmake -S lib/bridge_settings -B build-s && cmake --build build-s && ctest --test-dir build-s` |
-| QEMU end-to-end | ESP-IDF firmware in Espressif QEMU: boot, NVS, web assets, settings API, WebSocket, auth, OTA update into the second slot, automatic rollback | see `firmware-idf/test/qemu_e2e.py` |
+| ESP-IDF host tests | The firmware's JSON helpers and captive-portal DNS responder, fuzzed under ASan/UBSan | `cmake -S firmware-idf/test/host -B build-h && …` |
+| QEMU end-to-end | ESP-IDF firmware in Espressif QEMU, about 100 checks: boot, NVS, web assets and security headers, login, forced password change, lockout, settings, WebSocket feed, Wi-Fi settings, diagnostics, captive portal, OTA validation / install / rollback, restart, factory reset | see `firmware-idf/test/qemu_e2e.py` |
+| Browser test | The web UI in Chromium (phone and desktop) against a QEMU device: first-run flow, settings, firmware update through the UI; fails on console errors and CSP violations | see `firmware-idf/test/ui/ui_test.mjs` |
 | Firmware builds | ESP-IDF 6.1.1, Arduino-ESP32 3.3.12 and 2.0.17 | |
 
 `tools/ci_local.sh` runs everything above in containers, the same way as
@@ -304,10 +325,10 @@ See [`lib/leaf_can/README.md`](lib/leaf_can/README.md) for the full API and inte
 
 ## Status and limitations
 
-- **Not yet tested in a vehicle.** The 2.0 firmware is verified by the host tests, the differential test
-  against v1.3.0, the QEMU end-to-end test and builds. QEMU emulates neither the TWAI controller nor an
-  MCP2515, so the two CAN drivers, Wi-Fi and real bus timing still need a bench test with two CAN interfaces
-  before driving.
+- **Not yet tested in a vehicle.** The firmware is verified by the host tests, the differential test
+  against v1.3.0, the QEMU end-to-end and browser tests, and builds. QEMU emulates neither the TWAI controller
+  nor an MCP2515, so the two CAN drivers, Wi-Fi (including the captive portal on real phones) and real bus
+  timing still need a bench test with two CAN interfaces before driving.
 - The 110 kW multiplier of **0.9** is inherited from v1.3.0 and lowers torque. Confirm the intended value
   before use.
 - The PCB, its connectors, the 12 V supply and programming through the PCB jumpers have not been verified

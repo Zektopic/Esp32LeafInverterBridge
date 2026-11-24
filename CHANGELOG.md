@@ -1,5 +1,55 @@
 # Changelog
 
+## 2.1.0 - unreleased (ESP-IDF firmware)
+
+### Added
+- New web UI, plain JavaScript with no dependencies and about 20 KB gzipped, replacing about 145 KB of
+  Bootstrap/jQuery:
+  - live dashboard over a WebSocket (gear, inverter mode, state of charge, charging, torque bars, both CAN buses,
+    bridge latency);
+  - settings with a save bar;
+  - firmware update with progress and reboot tracking;
+  - device page for passwords, Wi-Fi, system information, diagnostics, crash dump, restart and factory reset;
+  - mobile first, light and dark theme.
+- REST API: `/api/settings`, `/api/session`, `/api/login`, `/api/logout`, `/api/password`, `/api/network`,
+  `/api/system`, `/api/reboot`, `/api/factory-reset`, `/api/coredump`, `/api/update`. Errors are returned as
+  JSON.
+- Admin password, separate from the Wi-Fi password:
+  - stored as a salted PBKDF2-HMAC-SHA256 hash;
+  - changes are blocked until the factory default has been replaced;
+  - bearer-token sessions with an idle timeout;
+  - login lockout with an increasing delay;
+  - HTTP basic auth still accepted for scripts.
+- Wi-Fi name and password can be changed in the UI. The access point uses WPA2/WPA3 with PMF capability.
+- Captive portal: a DNS server and connectivity-check redirect, so phones open the page after joining.
+- Diagnostics:
+  - bus error state and TEC/REC;
+  - bridge latency (avg / max / peak);
+  - frame rates and queue high water;
+  - task stack headroom and reset reason;
+  - crash-dump download.
+- Tests:
+  - host tests (ASan/UBSan) for the JSON helpers and the DNS responder;
+  - QEMU end-to-end test rewritten for the new API (about 100 checks);
+  - Playwright browser test of the first-run flow, including a firmware update through the UI.
+
+### Changed
+- The CAN drivers are started from the bridge task, so the CAN interrupts are served by CPU 1. Wi-Fi, lwIP and
+  the web server stay on CPU 0, and the CPU runs at 240 MHz.
+- MCP2515 driver:
+  - keeps servicing the chip while INT is low;
+  - re-initialises a controller that was reset by a supply glitch;
+  - keeps retrying one that is missing at boot;
+  - feeds the task watchdog.
+- OTA images are checked (magic, chip, project name) before anything is written to flash.
+- Web assets are revalidated with ETags (`304 Not Modified`). The page is served with a strict
+  Content-Security-Policy and security headers.
+- Kconfig: *OTA user name / password* are replaced by *factory admin password*. *Captive portal* is new.
+
+### Removed
+- `POST /settings` and the radio-button WebSocket messages of the 2.0 page in the ESP-IDF firmware. They are
+  replaced by `/api/settings` and the status feed. The Arduino firmware keeps the 2.0 page and API.
+
 ## 2.0.0 - unreleased
 
 ### Added

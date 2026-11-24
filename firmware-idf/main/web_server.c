@@ -1070,7 +1070,9 @@ esp_err_t web_server_start(void)
     cfg.task_priority = tskIDLE_PRIORITY + 5;
     cfg.lru_purge_enable = true;
     cfg.recv_wait_timeout = 10;
-    cfg.send_wait_timeout = 10;
+    /* A phone that stops reading (screen off) must not stall the single server
+     * task for long: its WebSocket send fails after 5 s and the socket is closed. */
+    cfg.send_wait_timeout = 5;
 
     esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) {
