@@ -1,0 +1,13 @@
+{
+  "name": "leaf-bridge-ui-test",
+  "private": true,
+  "description": "Browser test of the ESP-IDF firmware's web UI against the QEMU build",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "test": "node ui_test.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "1.65.1"
+  }
+}

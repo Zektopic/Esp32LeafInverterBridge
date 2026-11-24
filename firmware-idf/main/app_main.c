@@ -6,22 +6,27 @@
  * hardware independent lib/leaf_can library; this firmware provides the drivers
  * (on-chip TWAI + MCP2515), the bridge task, NVS settings and the web UI.
  *
+ * Boot order: NVS -> settings -> CAN bridge (CPU 1) -> Wi-Fi -> DNS -> web
+ * server -> OTA self test. The bridge forwards frames before Wi-Fi starts.
+ *
  * SPDX-License-Identifier: GPL-3.0-only
  */
 #include "driver/gpio.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 
 #include "bridge.h"
-#include "settings_store.h"
-#include "web_server.h"
+#include "captive_dns.h"
 #include "network.h"
+#include "security.h"
+#include "settings_store.h"
+#include "sysinfo.h"
+#include "web_server.h"
 
 static const char *TAG = "main";
 
@@ -57,7 +62,8 @@ static void confirm_image(bool healthy)
 void app_main(void)
 {
     const esp_app_desc_t *app = esp_app_get_description();
-    ESP_LOGI(TAG, "Esp32LeafInverterBridge %s (ESP-IDF %s)", app->version, app->idf_ver);
+    ESP_LOGI(TAG, "Esp32LeafInverterBridge %s (ESP-IDF %s), last reset: %s", app->version, app->idf_ver,
+             sysinfo_reset_reason());
 
     init_nvs();
     bridge_settings_t settings;
@@ -67,8 +73,14 @@ void app_main(void)
 
     /* CAN first: the bridge must be forwarding before Wi-Fi comes up. */
     const esp_err_t can_err = bridge_start(&settings);
+
+    ESP_ERROR_CHECK(security_init());
     ESP_ERROR_CHECK(network_start());
+#if CONFIG_BRIDGE_CAPTIVE_PORTAL
+    ESP_ERROR_CHECK(captive_dns_start());
+#endif
     ESP_ERROR_CHECK(web_server_start());
+
 #if CONFIG_BRIDGE_SELFTEST_REQUIRE_CAN
     confirm_image(can_err == ESP_OK);
 #else
@@ -81,7 +93,7 @@ void app_main(void)
     gpio_set_direction(CONFIG_BRIDGE_STATUS_LED_GPIO, GPIO_MODE_OUTPUT);
     int level = 0;
     for (;;) {
-        /* slow blink: both CAN controllers running; fast blink: a controller failed */
+        /* slow blink: both CAN controllers running; fast blink: a controller is down */
         level = !level;
         gpio_set_level(CONFIG_BRIDGE_STATUS_LED_GPIO, level);
         vTaskDelay(pdMS_TO_TICKS(bridge_buses_running() ? 500 : 100));

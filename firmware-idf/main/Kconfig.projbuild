@@ -44,14 +44,17 @@ menu "LEAF inverter bridge"
 
     menu "Wi-Fi access point"
         config BRIDGE_WIFI_SSID
-            string "SSID"
+            string "Factory network name (SSID)"
             default "Can-bridgeINV"
+            help
+                Initial access point name; can be changed in the web UI.
         config BRIDGE_WIFI_PASSWORD
-            string "Password (WPA2, at least 8 characters) - CHANGE IT"
+            string "Factory Wi-Fi password (WPA2/WPA3, 8-63 characters)"
             default "Password"
             help
-                Anyone on this network can change the torque settings and, with the
-                OTA password, flash firmware. Change it before installing in a car.
+                Initial access point password. It can be changed in the web UI
+                (Device > Wi-Fi network) and is then stored in NVS; a factory
+                reset returns to this value.
         config BRIDGE_WIFI_CHANNEL
             int "Channel"
             range 1 13
@@ -62,13 +65,22 @@ menu "LEAF inverter bridge"
             default 2
     endmenu
 
-    menu "Firmware update"
-        config BRIDGE_OTA_USERNAME
-            string "OTA user name (HTTP basic auth)"
-            default "admin"
-        config BRIDGE_OTA_PASSWORD
-            string "OTA password (empty = Wi-Fi password)"
+    menu "Web UI and security"
+        config BRIDGE_ADMIN_PASSWORD
+            string "Factory admin password (empty = factory Wi-Fi password)"
             default ""
+            help
+                Password of the web UI and API. While this factory default is in
+                use the bridge refuses every change except setting a new admin
+                password, so each device ends up with its own password. The new
+                password is stored as a salted PBKDF2-HMAC-SHA256 hash in NVS.
+        config BRIDGE_CAPTIVE_PORTAL
+            bool "Captive portal (phones open the configuration page on joining)"
+            default y
+            help
+                Runs a DNS server that answers every name with the bridge's address
+                and redirects the operating systems' connectivity checks to the
+                configuration page ("Sign in to network").
     endmenu
 
     config BRIDGE_SELFTEST_REQUIRE_CAN

@@ -1,14 +1,10 @@
 # Web assets are gzip-compressed at configure time and embedded into the app
 # image (served with Content-Encoding: gzip). Editing a file triggers a
 # re-configure through CMAKE_CONFIGURE_DEPENDS.
-set(web_root "${CMAKE_CURRENT_LIST_DIR}/../../web")
 set(web_assets
-    "${web_root}/index.html"
-    "${web_root}/static/bootstrap.min.css"
-    "${web_root}/static/bootstrap.min.js"
-    "${web_root}/static/jquery.min.js"
-    "${web_root}/static/popper.min.js"
-    "${CMAKE_CURRENT_LIST_DIR}/www/update.html")
+    "${CMAKE_CURRENT_LIST_DIR}/www/index.html"
+    "${CMAKE_CURRENT_LIST_DIR}/www/app.js"
+    "${CMAKE_CURRENT_LIST_DIR}/www/app.css")
 
 set(gz_dir "${CMAKE_CURRENT_BINARY_DIR}/www_gz")
 file(MAKE_DIRECTORY "${gz_dir}")
@@ -29,11 +25,16 @@ idf_component_register(
          "can_twai.c"
          "mcp2515.c"
          "settings_store.c"
-         "web_server.c"
+         "security.c"
          "network.c"
+         "captive_dns.c"
+         "dns_reply.c"
+         "json_util.c"
+         "sysinfo.c"
+         "web_server.c"
     INCLUDE_DIRS "."
     REQUIRES leaf_can bridge_settings
              esp_driver_twai esp_driver_spi esp_driver_gpio
-             esp_http_server esp_wifi esp_eth esp_netif esp_event nvs_flash
-             app_update esp_app_format esp_timer
+             esp_http_server esp_wifi esp_eth esp_netif esp_event nvs_flash lwip
+             app_update esp_app_format bootloader_support esp_timer espcoredump spi_flash mbedtls
     EMBED_FILES ${embedded_files})

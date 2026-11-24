@@ -1,12 +1,21 @@
 /*
- * mcp2515.c - minimal MCP2515 driver for the inverter bus.
+ * mcp2515.c - MCP2515 driver for the inverter bus.
  * SPDX-License-Identifier: GPL-3.0-only
  *
- * One task owns the SPI device and does all chip access: it is woken by the INT
- * pin (and polls every few ms as a fallback), drains both RX buffers into the
- * bridge queue and feeds TX buffer 0 from a FIFO. Only TXB0 is used so frames
- * leave in exactly the order the bridge produced them, which also sidesteps the
- * MCP2515/MCP25625 multi-buffer priority errata v1.x worked around.
+ * One task owns the SPI device and does all chip access:
+ *  - it is woken by the INT pin and keeps servicing the chip for as long as INT
+ *    stays low, so an edge can never be lost; a short poll is only a fallback;
+ *  - it drains both RX buffers into the bridge queue (READ RX BUFFER, which also
+ *    clears the interrupt flag in the same SPI transaction);
+ *  - it feeds TX buffer 0 from a FIFO. Only TXB0 is used so frames leave in
+ *    exactly the order the bridge produced them, which also sidesteps the
+ *    MCP2515/MCP25625 multi-buffer priority errata v1.x worked around;
+ *  - every 100 ms it reads the error flags and counters and checks that the
+ *    chip is still in normal mode. A chip that was reset by a supply glitch is
+ *    re-initialised, and a chip that is missing at boot is retried every second,
+ *    so the bridge recovers without a reboot.
+ * The task is created from the bridge task, i.e. on CPU 1, together with the
+ * INT interrupt.
  */
 #include "mcp2515.h"
 
@@ -16,11 +25,12 @@
 #include "driver/spi_master.h"
 #include "esp_attr.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "rom/ets_sys.h"
 #include "sdkconfig.h"
 
 static const char *TAG = "mcp2515";
@@ -39,6 +49,8 @@ static const char *TAG = "mcp2515";
 /* Registers */
 #define REG_CANSTAT     0x0E
 #define REG_CANCTRL     0x0F
+#define REG_TEC         0x1C
+#define REG_REC         0x1D
 #define REG_CNF3        0x28
 #define REG_CNF2        0x29
 #define REG_CNF1        0x2A
@@ -57,8 +69,10 @@ static const char *TAG = "mcp2515";
 #define INT_MERR        0x80
 #define STAT_RX0IF      0x01
 #define STAT_RX1IF      0x02
-#define STAT_TX0REQ     0x04
 #define STAT_TX0IF      0x08
+#define EFLG_EWARN      0x01
+#define EFLG_RXEP       0x08
+#define EFLG_TXEP       0x10
 #define EFLG_TXBO       0x20
 #define EFLG_RX0OVR     0x40
 #define EFLG_RX1OVR     0x80
@@ -69,10 +83,14 @@ static const char *TAG = "mcp2515";
 
 #define TX_QUEUE_DEPTH  32
 #define TX_TIMEOUT_US   (50 * 1000)
-#define EFLG_PERIOD_US  (100 * 1000)
+#define HEALTH_PERIOD_US (100 * 1000)
+#define RETRY_PERIOD_MS 1000
+#define POLL_MS         5
+#define MAX_PASSES      64
 #define TASK_STACK      3072
 #define TASK_PRIO       (configMAX_PRIORITIES - 2) /* just above the bridge task */
 #define TASK_CORE       1
+#define START_WAIT_MS   500
 
 /* 500 kbit/s bit timing (CNF1, CNF2, CNF3), BRP = 0, SJW = 1 TQ. */
 #if CONFIG_BRIDGE_MCP2515_CRYSTAL_16MHZ
@@ -88,6 +106,8 @@ static const uint8_t k_cnf[3] = {0x00, 0x91, 0x01};
 static spi_device_handle_t s_spi;
 static TaskHandle_t s_task;
 static QueueHandle_t s_tx_queue;
+static SemaphoreHandle_t s_first_attempt;
+static esp_err_t s_first_err = ESP_ERR_TIMEOUT;
 static bridge_bus_stats_t s_stats;
 
 /* ---- SPI primitives --------------------------------------------------------------- */
@@ -107,6 +127,15 @@ static uint8_t read_reg(uint8_t reg)
     uint8_t rx[3] = {0};
     (void)xfer(tx, rx, sizeof(tx));
     return rx[2];
+}
+
+/* Reads `n` consecutive registers starting at `reg`. */
+static void read_regs(uint8_t reg, uint8_t *out, size_t n)
+{
+    uint8_t tx[2 + 4] = {INS_READ, reg};
+    uint8_t rx[2 + 4] = {0};
+    (void)xfer(tx, rx, 2 + n);
+    memcpy(out, &rx[2], n);
 }
 
 static void write_reg(uint8_t reg, uint8_t value)
@@ -181,6 +210,49 @@ static void load_and_send_txb0(const leaf_can_frame_t *f)
     (void)xfer(&rts, NULL, 1);
 }
 
+/* ---- chip setup ------------------------------------------------------------------------ */
+static esp_err_t set_mode(uint8_t mode)
+{
+    bit_modify(REG_CANCTRL, MODE_MASK, mode);
+    for (int i = 0; i < 20; i++) {
+        if ((read_reg(REG_CANSTAT) & MODE_MASK) == mode) {
+            return ESP_OK;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    return ESP_ERR_TIMEOUT;
+}
+
+static esp_err_t chip_init(void)
+{
+    const uint8_t reset = INS_RESET;
+    (void)xfer(&reset, NULL, 1);
+    vTaskDelay(pdMS_TO_TICKS(10)); /* oscillator start-up */
+    const uint8_t canstat = read_reg(REG_CANSTAT);
+    if ((canstat & MODE_MASK) != MODE_CONFIG) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    write_reg(REG_CNF1, k_cnf[0]);
+    write_reg(REG_CNF2, k_cnf[1]);
+    write_reg(REG_CNF3, k_cnf[2]);
+    if (read_reg(REG_CNF2) != k_cnf[1]) {
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+    write_reg(REG_RXB0CTRL, 0x64); /* receive any message, roll over into RXB1 */
+    write_reg(REG_RXB1CTRL, 0x60); /* receive any message */
+    write_reg(REG_CANINTF, 0x00);
+    write_reg(REG_CANINTE, INT_RX0 | INT_RX1 | INT_TX0);
+    return set_mode(MODE_NORMAL);
+}
+
+static void drop_pending_tx(void)
+{
+    leaf_can_frame_t f;
+    while (xQueueReceive(s_tx_queue, &f, 0) == pdTRUE) {
+        s_stats.tx_dropped++;
+    }
+}
+
 /* ---- service task -------------------------------------------------------------------- */
 static void IRAM_ATTR int_isr(void *arg)
 {
@@ -192,19 +264,70 @@ static void IRAM_ATTR int_isr(void *arg)
     }
 }
 
+static uint8_t state_from_eflg(uint8_t eflg)
+{
+    if (eflg & EFLG_TXBO) {
+        return BRIDGE_BUS_OFF;
+    }
+    if (eflg & (EFLG_TXEP | EFLG_RXEP)) {
+        return BRIDGE_BUS_PASSIVE;
+    }
+    if (eflg & EFLG_EWARN) {
+        return BRIDGE_BUS_WARNING;
+    }
+    return BRIDGE_BUS_ACTIVE;
+}
+
+/* Waits for a working chip: called at start and after a fault. */
+static void bring_up(bool first)
+{
+    bool reported = false;
+    for (;;) {
+        const esp_err_t err = chip_init();
+        if (first) {
+            s_first_err = err;
+            xSemaphoreGive(s_first_attempt);
+            first = false;
+        }
+        if (err == ESP_OK) {
+            s_stats.running = true;
+            s_stats.state = BRIDGE_BUS_ACTIVE;
+            ESP_LOGI(TAG, "inverter bus running (%s crystal, SPI %d Hz)", CRYSTAL_NAME,
+                     CONFIG_BRIDGE_MCP2515_SPI_HZ);
+            return;
+        }
+        if (!reported) {
+            ESP_LOGE(TAG, "no MCP2515 found (%s) - check wiring / power; retrying every %d ms",
+                     esp_err_to_name(err), RETRY_PERIOD_MS);
+            reported = true;
+        }
+        drop_pending_tx();
+        for (int waited = 0; waited < RETRY_PERIOD_MS; waited += 100) {
+            esp_task_wdt_reset();
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+    }
+}
+
 static void service_task(void *arg)
 {
     (void)arg;
     bool tx_busy = false;
     int64_t tx_started = 0;
-    int64_t next_eflg = 0;
+    int64_t next_health = 0;
     bool was_bus_off = false;
     leaf_can_frame_t f;
 
-    for (;;) {
-        (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2));
+    /* Only device on this bus: keep it acquired for low-latency polling transfers. */
+    ESP_ERROR_CHECK(spi_device_acquire_bus(s_spi, portMAX_DELAY));
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+    bring_up(true);
 
-        for (int guard = 0; guard < 32; guard++) {
+    for (;;) {
+        (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(POLL_MS));
+        esp_task_wdt_reset();
+
+        for (int pass = 0; pass < MAX_PASSES; pass++) {
             const uint8_t status = read_status();
             bool worked = false;
             if (status & STAT_RX0IF) { /* RXB0 holds the older frame when both are full */
@@ -227,9 +350,19 @@ static void service_task(void *arg)
                 tx_started = esp_timer_get_time();
                 worked = true;
             }
-            if (!worked) {
+            if (worked) {
+                continue;
+            }
+            /* INT is a level on the chip side: while it is low something is pending. */
+            if (gpio_get_level(CONFIG_BRIDGE_MCP2515_INT_GPIO) != 0) {
                 break;
             }
+            /* INT low with nothing to do (e.g. TX0IF after an abort): clear stray flags. */
+            const uint8_t stray = (uint8_t)(read_reg(REG_CANINTF) & ~(INT_RX0 | INT_RX1));
+            if (stray != 0 && !(tx_busy && (stray & INT_TX0))) {
+                bit_modify(REG_CANINTF, stray, 0);
+            }
+            break;
         }
 
         const int64_t now = esp_timer_get_time();
@@ -240,40 +373,46 @@ static void service_task(void *arg)
             tx_busy = false;
             s_stats.tx_dropped++;
         }
-        if (now >= next_eflg) {
-            next_eflg = now + EFLG_PERIOD_US;
-            const uint8_t eflg = read_reg(REG_EFLG);
-            if (eflg & (EFLG_RX0OVR | EFLG_RX1OVR)) {
-                s_stats.rx_overflow++;
-                bit_modify(REG_EFLG, EFLG_RX0OVR | EFLG_RX1OVR, 0);
-            }
-            const bool bus_off = (eflg & EFLG_TXBO) != 0;
-            if (bus_off && !was_bus_off) {
-                s_stats.bus_off++; /* the MCP2515 recovers on its own */
-                ESP_LOGW(TAG, "bus-off");
-            }
-            was_bus_off = bus_off;
-            const uint8_t intf = read_reg(REG_CANINTF);
-            if (intf & (INT_ERR | INT_MERR)) {
-                bit_modify(REG_CANINTF, INT_ERR | INT_MERR, 0);
-            }
+        if (now < next_health) {
+            continue;
+        }
+        next_health = now + HEALTH_PERIOD_US;
+
+        /* Still configured? A supply glitch resets the chip into configuration mode. */
+        if ((read_reg(REG_CANSTAT) & MODE_MASK) != MODE_NORMAL) {
+            ESP_LOGW(TAG, "controller left normal mode (reset or brown-out) - re-initialising");
+            s_stats.running = false;
+            s_stats.state = BRIDGE_BUS_STOPPED;
+            s_stats.restarts++;
+            tx_busy = false;
+            drop_pending_tx();
+            bring_up(false);
+            continue;
+        }
+        uint8_t counters[2];
+        read_regs(REG_TEC, counters, sizeof(counters));
+        s_stats.tec = counters[0];
+        s_stats.rec = counters[1];
+        const uint8_t eflg = read_reg(REG_EFLG);
+        s_stats.state = state_from_eflg(eflg);
+        if (eflg & (EFLG_RX0OVR | EFLG_RX1OVR)) {
+            s_stats.rx_overflow++;
+            bit_modify(REG_EFLG, EFLG_RX0OVR | EFLG_RX1OVR, 0);
+        }
+        const bool bus_off = (eflg & EFLG_TXBO) != 0;
+        if (bus_off && !was_bus_off) {
+            s_stats.bus_off++; /* the MCP2515 recovers on its own after 128 x 11 recessive bits */
+            ESP_LOGW(TAG, "bus-off");
+        }
+        was_bus_off = bus_off;
+        const uint8_t intf = read_reg(REG_CANINTF);
+        if (intf & (INT_ERR | INT_MERR)) {
+            bit_modify(REG_CANINTF, INT_ERR | INT_MERR, 0);
         }
     }
 }
 
-/* ---- setup ------------------------------------------------------------------------------ */
-static esp_err_t set_mode(uint8_t mode)
-{
-    bit_modify(REG_CANCTRL, MODE_MASK, mode);
-    for (int i = 0; i < 20; i++) {
-        if ((read_reg(REG_CANSTAT) & MODE_MASK) == mode) {
-            return ESP_OK;
-        }
-        vTaskDelay(pdMS_TO_TICKS(1));
-    }
-    return ESP_ERR_TIMEOUT;
-}
-
+/* ---- public API -------------------------------------------------------------------------- */
 esp_err_t mcp2515_start(void)
 {
     const spi_bus_config_t bus = {
@@ -298,39 +437,9 @@ esp_err_t mcp2515_start(void)
     if (err != ESP_OK) {
         return err;
     }
-    /* Only device on this bus: keep it acquired for low-latency polling transfers. */
-    err = spi_device_acquire_bus(s_spi, portMAX_DELAY);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    const uint8_t reset = INS_RESET;
-    (void)xfer(&reset, NULL, 1);
-    vTaskDelay(pdMS_TO_TICKS(10));
-    const uint8_t canstat = read_reg(REG_CANSTAT);
-    if ((canstat & MODE_MASK) != MODE_CONFIG) {
-        ESP_LOGE(TAG, "no MCP2515 found (CANSTAT 0x%02X) - check wiring / power", canstat);
-        return ESP_ERR_NOT_FOUND;
-    }
-
-    write_reg(REG_CNF1, k_cnf[0]);
-    write_reg(REG_CNF2, k_cnf[1]);
-    write_reg(REG_CNF3, k_cnf[2]);
-    if (read_reg(REG_CNF2) != k_cnf[1]) {
-        ESP_LOGE(TAG, "register write verification failed");
-        return ESP_ERR_INVALID_RESPONSE;
-    }
-    write_reg(REG_RXB0CTRL, 0x64); /* receive any message, roll over into RXB1 */
-    write_reg(REG_RXB1CTRL, 0x60); /* receive any message */
-    write_reg(REG_CANINTF, 0x00);
-    write_reg(REG_CANINTE, INT_RX0 | INT_RX1 | INT_TX0);
-
     s_tx_queue = xQueueCreate(TX_QUEUE_DEPTH, sizeof(leaf_can_frame_t));
-    if (s_tx_queue == NULL) {
-        return ESP_ERR_NO_MEM;
-    }
-    if (xTaskCreatePinnedToCore(service_task, "mcp2515", TASK_STACK, NULL, TASK_PRIO, &s_task, TASK_CORE) !=
-        pdPASS) {
+    s_first_attempt = xSemaphoreCreateBinary();
+    if (s_tx_queue == NULL || s_first_attempt == NULL) {
         return ESP_ERR_NO_MEM;
     }
 
@@ -340,22 +449,28 @@ esp_err_t mcp2515_start(void)
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .intr_type = GPIO_INTR_NEGEDGE,
     };
-    ESP_ERROR_CHECK(gpio_config(&io));
+    err = gpio_config(&io);
+    if (err != ESP_OK) {
+        return err;
+    }
     err = gpio_install_isr_service(0);
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) { /* already installed is fine */
         return err;
     }
-    ESP_ERROR_CHECK(gpio_isr_handler_add(CONFIG_BRIDGE_MCP2515_INT_GPIO, int_isr, NULL));
 
-    err = set_mode(MODE_NORMAL);
+    if (xTaskCreatePinnedToCore(service_task, "mcp2515", TASK_STACK, NULL, TASK_PRIO, &s_task, TASK_CORE) !=
+        pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
+    err = gpio_isr_handler_add(CONFIG_BRIDGE_MCP2515_INT_GPIO, int_isr, NULL);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "could not enter normal mode");
         return err;
     }
-    s_stats.running = true;
-    xTaskNotifyGive(s_task);
-    ESP_LOGI(TAG, "inverter bus running (%s crystal, SPI %d Hz)", CRYSTAL_NAME, CONFIG_BRIDGE_MCP2515_SPI_HZ);
-    return ESP_OK;
+    /* Report the result of the first attempt; later attempts continue in the task. */
+    if (xSemaphoreTake(s_first_attempt, pdMS_TO_TICKS(START_WAIT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+    return s_first_err;
 }
 
 bool mcp2515_send(const leaf_can_frame_t *frame)
@@ -371,4 +486,9 @@ bool mcp2515_send(const leaf_can_frame_t *frame)
 void mcp2515_get_stats(bridge_bus_stats_t *out)
 {
     *out = s_stats;
+}
+
+uint32_t mcp2515_task_stack_free(void)
+{
+    return (s_task != NULL) ? (uint32_t)uxTaskGetStackHighWaterMark(s_task) : 0u;
 }

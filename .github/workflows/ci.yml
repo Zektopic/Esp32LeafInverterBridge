@@ -8,7 +8,7 @@ on:
 
 jobs:
   host-tests:
-    name: Library tests (host, ASan/UBSan)
+    name: Host tests (ASan/UBSan)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +25,12 @@ jobs:
             -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all"
           cmake --build build/bridge_settings -j
           ctest --test-dir build/bridge_settings --output-on-failure
+      - name: firmware-idf helpers (JSON, captive-portal DNS)
+        run: |
+          cmake -S firmware-idf/test/host -B build/idf_host -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all"
+          cmake --build build/idf_host -j
+          ctest --test-dir build/idf_host --output-on-failure
 
   esp-idf:
     name: ESP-IDF firmware + QEMU end-to-end
@@ -48,7 +54,7 @@ jobs:
           printf 'CONFIG_BRIDGE_SELFTEST_REQUIRE_CAN=y\n' > build-qemu-rb.overlay
           idf.py -B build-qemu-rb -D SDKCONFIG=build-qemu-rb/sdkconfig \
             -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.qemu;build-qemu-rb.overlay" build
-      - name: QEMU end-to-end (web, NVS, OTA, rollback)
+      - name: QEMU end-to-end (API, auth, NVS, captive portal, OTA, rollback, factory reset)
         working-directory: firmware-idf
         shell: bash
         run: |
@@ -63,6 +69,49 @@ jobs:
             firmware-idf/build/bootloader/bootloader.bin
             firmware-idf/build/partition_table/partition-table.bin
             firmware-idf/build-qemu/qemu_e2e.log
+      - name: Keep the QEMU build for the browser test
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-idf-qemu
+          path: |
+            firmware-idf/build-qemu/flash_args
+            firmware-idf/build-qemu/leaf_inverter_bridge.bin
+            firmware-idf/build-qemu/bootloader/bootloader.bin
+            firmware-idf/build-qemu/partition_table/partition-table.bin
+            firmware-idf/build-qemu/ota_data_initial.bin
+
+  ui:
+    name: Web UI in a browser (Playwright vs QEMU)
+    needs: esp-idf
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-idf-qemu
+          path: firmware-idf/build-qemu
+      - name: Boot a fresh device in QEMU
+        run: |
+          chmod -R a+rwX firmware-idf
+          docker run -d --name leafqemu -p 127.0.0.1:18080:18080 -v "$PWD":/project -w /project/firmware-idf \
+            espressif/idf:v6.1.1 bash -c '. $IDF_PATH/export.sh >/dev/null && \
+            python test/qemu_e2e.py --build build-qemu --serve --listen 0.0.0.0'
+          for i in $(seq 1 120); do docker logs leafqemu 2>&1 | grep -q SERVING && break; sleep 2; done
+          docker logs leafqemu 2>&1 | tail -5
+      - name: Browser test
+        run: |
+          docker run --rm --network host -v "$PWD":/work -w /work/firmware-idf/test/ui \
+            mcr.microsoft.com/playwright:v1.65.1-noble bash -c 'npm ci --no-audit --no-fund && \
+            node ui_test.mjs --url http://127.0.0.1:18080 --out /work/ui-shots \
+            --firmware /work/firmware-idf/build-qemu/leaf_inverter_bridge.bin'
+      - name: QEMU log
+        if: always()
+        run: docker logs leafqemu 2>&1 | tail -200 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-screenshots
+          path: ui-shots
 
   arduino:
     name: Arduino firmware (${{ matrix.env }})
