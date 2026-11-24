@@ -11,8 +11,12 @@
 #include "bridge.h"
 #include "leaf_can.h"
 
-/* Reset and configure the MCP2515 for 500 kbit/s and start its service task. */
+/* Reset and configure the MCP2515 for 500 kbit/s and start its service task.
+ * Returns the result of the first attempt; if the chip is missing the task
+ * keeps retrying every second and the bus comes up when it appears. */
 esp_err_t mcp2515_start(void);
 /* Non-blocking; false if the TX queue is full (frame dropped and counted). */
 bool mcp2515_send(const leaf_can_frame_t *frame);
 void mcp2515_get_stats(bridge_bus_stats_t *out);
+/* Stack headroom of the service task in bytes (diagnostics). */
+uint32_t mcp2515_task_stack_free(void);

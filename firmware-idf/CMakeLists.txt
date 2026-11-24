@@ -9,6 +9,6 @@ set(EXTRA_COMPONENT_DIRS
 # Only build what the bridge needs.
 set(COMPONENTS main)
 
-set(PROJECT_VER "2.0.0")
+set(PROJECT_VER "2.1.0")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(leaf_inverter_bridge)

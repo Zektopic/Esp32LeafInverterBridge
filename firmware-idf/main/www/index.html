@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0b5cad">
+  <title>LEAF Inverter Bridge</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b5cad'/%3E%3Cpath d='M18 4 8 18h7l-2 10 11-15h-7z' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M12 4a9 9 0 0 0-9 9 9 9 0 0 0 2.6 6.4l1.4-1.4A7 7 0 0 1 5 13a7 7 0 0 1 14 0 7 7 0 0 1-2 5l1.4 1.4A9 9 0 0 0 21 13a9 9 0 0 0-9-9zm4.2 4.4-5 5a1.5 1.5 0 1 0 1.4 1.4l5-5z"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10v2H4zm14 0h2v2h-2zm-2-2h2v6h-2zM4 16h4v2H4zm8 0h8v2h-8zm-2-2h2v6h-2zM4 11h2v2H4zm6 0h10v2H10zM6 9h2v6H6z"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><path d="M9 2h2v3h2V2h2v3h2a2 2 0 0 1 2 2v2h3v2h-3v2h3v2h-3v2a2 2 0 0 1-2 2h-2v3h-2v-3h-2v3H9v-3H7a2 2 0 0 1-2-2v-2H2v-2h3v-2H2V9h3V7a2 2 0 0 1 2-2h2zm-2 5v10h10V7zm3 3h4v4h-4z"/></symbol>
+    <symbol id="i-cog" viewBox="0 0 24 24"><path d="m19.4 13 .1-1-.1-1 2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.3 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11l-.1 1 .1 1-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.3 2.6h4l.3-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 0-5 5v3H5v12h14V10h-2V7a5 5 0 0 0-5-5zm-3 5a3 3 0 0 1 6 0v3H9zm3 7a2 2 0 0 1 1 3.7V20h-2v-2.3A2 2 0 0 1 12 14z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.4 0-8 2.2-8 5v3h16v-3c0-2.8-3.6-5-8-5z"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15.3A8.5 8.5 0 0 1 8.7 4 8.5 8.5 0 1 0 20 15.3z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm-1-6h2v3h-2zm0 19h2v3h-2zM1 11h3v2H1zm19 0h3v2h-3zM4.2 5.6l1.4-1.4 2.1 2.1-1.4 1.4zm12.1 12.1 1.4-1.4 2.1 2.1-1.4 1.4zM4.2 18.4l2.1-2.1 1.4 1.4-2.1 2.1zM16.3 6.3l2.1-2.1 1.4 1.4-2.1 2.1z"/></symbol>
+    <symbol id="i-auto" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2v16a8 8 0 0 1 0-16z"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M11 16V7.8l-3.6 3.6L6 10l6-6 6 6-1.4 1.4L13 7.8V16zm-7 2h16v2H4z"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M12 5C6.5 5 2.7 9.2 1.5 12c1.2 2.8 5 7 10.5 7s9.3-4.2 10.5-7C21.3 9.2 17.5 5 12 5zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 2 1 21h22zm-1 7h2v6h-2zm0 8h2v2h-2z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m9 16.2-4.2-4.2-1.4 1.4L9 19 21 7l-1.4-1.4z"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M16 7V3h-2v4h-4V3H8v4H6v5a6 6 0 0 0 5 5.9V22h2v-4.1a6 6 0 0 0 5-5.9V7z"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <a class="brand" href="#dashboard" aria-label="LEAF Inverter Bridge - dashboard">
+      <span class="brand-mark"><svg><use href="#i-bolt"/></svg></span>
+      <span class="brand-text">
+        <strong>LEAF Inverter Bridge</strong>
+        <span id="hdr-sub" class="muted">Connecting…</span>
+      </span>
+    </a>
+    <div class="topbar-right">
+      <span id="conn" class="pill pill-wait" role="status" title="Connection to the bridge"><span class="dot"></span><span id="conn-text">Connecting</span></span>
+      <button id="btn-theme" class="icon-btn" type="button" aria-label="Colour theme: automatic" title="Colour theme"><svg><use href="#i-auto"/></svg></button>
+      <button id="btn-account" class="icon-btn" type="button" aria-label="Log in" title="Log in"><svg><use href="#i-lock"/></svg></button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden>
+    <svg class="banner-icon"><use href="#i-warn"/></svg>
+    <div class="banner-text"><strong>Factory default password in use.</strong> <span>Anyone who knows it can change this bridge. Set your own password to unlock changes.</span></div>
+    <button id="banner-action" class="btn btn-small btn-light" type="button">Set password</button>
+  </div>
+
+  <nav class="tabs" aria-label="Sections">
+    <a href="#dashboard" data-view="dashboard"><svg><use href="#i-gauge"/></svg><span>Dashboard</span></a>
+    <a href="#settings" data-view="settings"><svg><use href="#i-sliders"/></svg><span>Settings</span></a>
+    <a href="#firmware" data-view="firmware"><svg><use href="#i-chip"/></svg><span>Firmware</span></a>
+    <a href="#device" data-view="device"><svg><use href="#i-cog"/></svg><span>Device</span></a>
+  </nav>
+
+  <main id="main">
+    <!-- ===================== Dashboard ===================== -->
+    <section id="view-dashboard" class="view" aria-labelledby="h-dashboard">
+      <h1 id="h-dashboard" class="sr-only">Dashboard</h1>
+      <div class="grid">
+        <article class="card hero">
+          <div class="gear-block">
+            <div id="gear" class="gear" aria-live="polite">–</div>
+            <div>
+              <div class="label">Gear</div>
+              <div id="gear-name" class="value-lg">Waiting for data</div>
+              <div id="park-note" class="muted small"></div>
+            </div>
+          </div>
+          <div class="hero-side">
+            <div class="label">Inverter upgrade</div>
+            <div id="mode-label" class="value-md">–</div>
+            <div id="mode-chips" class="chips"></div>
+          </div>
+          <div class="battery-block">
+            <div class="soc" title="State of charge">
+              <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="ring-bg" cx="60" cy="60" r="52"/>
+                <circle id="soc-ring" class="ring-fg" cx="60" cy="60" r="52"/>
+              </svg>
+              <div class="soc-text"><div id="soc" class="value-md">–</div></div>
+            </div>
+            <div>
+              <div class="label">Battery</div>
+              <div id="charge" class="value-md">–</div>
+              <div id="charge-note" class="muted small">State of charge from the battery controller</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <header class="card-head"><h2>Torque</h2><span class="muted small">Nm · regen ← 0 → drive</span></header>
+          <div class="bars">
+            <div class="bar-row">
+              <div class="bar-label">Requested by the car</div>
+              <div class="bar"><span class="bar-zero"></span><span id="bar-vcm" class="bar-fill"></span></div>
+              <div id="val-vcm" class="bar-value">–</div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-label">Sent to the inverter</div>
+              <div class="bar"><span class="bar-zero"></span><span id="bar-out" class="bar-fill accent"></span></div>
+              <div id="val-out" class="bar-value">–</div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-label">Delivered (inverter)</div>
+              <div class="bar"><span class="bar-zero"></span><span id="bar-resp" class="bar-fill"></span></div>
+              <div id="val-resp" class="bar-value">–</div>
+            </div>
+          </div>
+          <p id="torque-note" class="muted small"></p>
+        </article>
+
+        <article class="card">
+          <header class="card-head"><h2>CAN buses</h2><span class="muted small">500 kbit/s</span></header>
+          <div class="buses">
+            <div class="bus" id="bus-vcm">
+              <div class="bus-head"><span class="status-dot"></span><div><strong>Car / VCM</strong><div class="muted small">ESP32 TWAI</div></div><span class="bus-state">–</span></div>
+              <dl class="kv">
+                <dt>Receive</dt><dd data-k="rx_per_s">–</dd>
+                <dt>Transmit</dt><dd data-k="tx_per_s">–</dd>
+                <dt>Errors (TX/RX)</dt><dd data-k="errors">–</dd>
+                <dt>Dropped</dt><dd data-k="dropped">–</dd>
+                <dt>Bus-off / restarts</dt><dd data-k="busoff">–</dd>
+              </dl>
+            </div>
+            <div class="bus" id="bus-inverter">
+              <div class="bus-head"><span class="status-dot"></span><div><strong>Inverter</strong><div class="muted small">MCP2515</div></div><span class="bus-state">–</span></div>
+              <dl class="kv">
+                <dt>Receive</dt><dd data-k="rx_per_s">–</dd>
+                <dt>Transmit</dt><dd data-k="tx_per_s">–</dd>
+                <dt>Errors (TX/RX)</dt><dd data-k="errors">–</dd>
+                <dt>Dropped</dt><dd data-k="dropped">–</dd>
+                <dt>Bus-off / restarts</dt><dd data-k="busoff">–</dd>
+              </dl>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <header class="card-head"><h2>Bridge</h2><span id="uptime" class="muted small">–</span></header>
+          <div class="stats">
+            <div class="stat"><div class="label">Latency (avg)</div><div id="lat-avg" class="value-md">–</div></div>
+            <div class="stat"><div class="label">Latency (max 1 s)</div><div id="lat-max" class="value-md">–</div></div>
+            <div class="stat"><div class="label">Frames modified</div><div id="st-mod" class="value-md">–</div></div>
+            <div class="stat"><div class="label">Frames generated</div><div id="st-gen" class="value-md">–</div></div>
+            <div class="stat"><div class="label">Torque limited</div><div id="st-clamp" class="value-md">–</div></div>
+            <div class="stat"><div class="label">Queue peak</div><div id="st-queue" class="value-md">–</div></div>
+          </div>
+          <p class="muted small">Latency is measured from frame reception to the hand-over to the other bus. <span id="lat-peak"></span></p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===================== Settings ===================== -->
+    <section id="view-settings" class="view" aria-labelledby="h-settings" hidden>
+      <h1 id="h-settings" class="view-title">Settings</h1>
+      <div id="settings-park" class="notice" hidden><svg><use href="#i-warn"/></svg><span>The car is not in P. Settings can be changed only while parked.</span></div>
+      <form id="settings-form" class="stack" novalidate>
+        <article class="card">
+          <header class="card-head"><h2>Inverter upgrade</h2><span class="badge badge-ok">Active</span></header>
+          <p class="muted">Choose the inverter fitted to the car. The bridge scales the torque the car requests so the upgraded inverter delivers its extra power, and emulates the messages the newer inverter expects.</p>
+          <div id="inverter-options" class="options" role="radiogroup" aria-label="Inverter upgrade"></div>
+        </article>
+        <article class="card">
+          <header class="card-head"><h2>Vehicle and battery</h2><span class="badge">Stored only</span></header>
+          <p class="muted">These options are saved on the bridge for upcoming features. They do not change how the bridge behaves yet.</p>
+          <div id="other-settings" class="fields"></div>
+        </article>
+        <div id="savebar" class="savebar" hidden>
+          <span id="savebar-text">Unsaved changes</span>
+          <div class="savebar-actions">
+            <button id="btn-discard" class="btn btn-ghost" type="button">Discard</button>
+            <button id="btn-save" class="btn btn-primary" type="submit">Save</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <!-- ===================== Firmware ===================== -->
+    <section id="view-firmware" class="view" aria-labelledby="h-firmware" hidden>
+      <h1 id="h-firmware" class="view-title">Firmware</h1>
+      <div class="grid">
+        <article class="card">
+          <header class="card-head"><h2>Installed</h2><span id="fw-badge" class="badge badge-ok">Running</span></header>
+          <dl class="kv kv-wide">
+            <dt>Version</dt><dd id="fw-version">–</dd>
+            <dt>Built</dt><dd id="fw-built">–</dd>
+            <dt>ESP-IDF</dt><dd id="fw-idf">–</dd>
+            <dt>Running slot</dt><dd id="fw-slot">–</dd>
+            <dt>Other slot</dt><dd id="fw-other">–</dd>
+          </dl>
+        </article>
+        <article class="card">
+          <header class="card-head"><h2>Install an update</h2></header>
+          <label id="dropzone" class="dropzone" for="fw-file">
+            <svg><use href="#i-upload"/></svg>
+            <span id="drop-text"><strong>Choose a firmware file</strong> or drop it here<br><span class="muted small">leaf_inverter_bridge.bin from the build or a release</span></span>
+            <input id="fw-file" type="file" accept=".bin,application/octet-stream">
+          </label>
+          <div id="fw-progress" class="progress" hidden><div id="fw-progress-bar" class="progress-bar"></div></div>
+          <p id="fw-status" class="muted small" role="status"></p>
+          <div class="actions">
+            <button id="btn-install" class="btn btn-primary" type="button" disabled>Install update</button>
+          </div>
+          <ul class="checklist muted small">
+            <li>Only while the car is in P. Driving off aborts the update.</li>
+            <li>The previous firmware is kept. If the new one cannot start both CAN buses it is rolled back automatically.</li>
+            <li>Settings and passwords are kept.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===================== Device ===================== -->
+    <section id="view-device" class="view" aria-labelledby="h-device" hidden>
+      <h1 id="h-device" class="view-title">Device</h1>
+      <div class="grid">
+        <article class="card">
+          <header class="card-head"><h2>Admin password</h2><span id="pw-badge" class="badge">–</span></header>
+          <p class="muted small">Protects every change made through this page: settings, firmware updates, restarts and passwords.</p>
+          <form id="form-password" class="fields" autocomplete="on">
+            <input type="text" name="username" value="admin" autocomplete="username" hidden>
+            <label class="field"><span>Current password</span><input name="current" type="password" autocomplete="current-password" required></label>
+            <label class="field"><span>New password</span><input name="new" type="password" autocomplete="new-password" minlength="8" maxlength="64" required><small class="muted">8–64 characters, not the factory default.</small></label>
+            <label class="field"><span>Repeat new password</span><input name="repeat" type="password" autocomplete="new-password" required></label>
+            <div class="actions"><button class="btn btn-primary" type="submit">Change password</button></div>
+          </form>
+        </article>
+
+        <article class="card">
+          <header class="card-head"><h2>Wi-Fi network</h2><span id="wifi-badge" class="badge">–</span></header>
+          <p class="muted small">The bridge's own access point. Connected phones are disconnected when it changes and must rejoin with the new password.</p>
+          <form id="form-wifi" class="fields" autocomplete="off">
+            <label class="field"><span>Network name (SSID)</span><input name="ssid" type="text" maxlength="32" required></label>
+            <label class="field"><span>New Wi-Fi password</span><input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="63" required><small class="muted">8–63 characters (WPA2/WPA3).</small></label>
+            <label class="field"><span>Repeat Wi-Fi password</span><input name="repeat" type="password" autocomplete="new-password" required></label>
+            <div class="actions"><button class="btn btn-primary" type="submit">Save Wi-Fi settings</button></div>
+          </form>
+        </article>
+
+        <article class="card">
+          <header class="card-head"><h2>System</h2><button id="btn-sys-refresh" class="btn btn-small btn-ghost" type="button">Refresh</button></header>
+          <dl id="sys-info" class="kv kv-wide"></dl>
+        </article>
+
+        <article class="card">
+          <header class="card-head"><h2>Diagnostics</h2></header>
+          <p class="muted small">A diagnostics file (status, settings and system information, no passwords) helps when reporting a problem.</p>
+          <div class="actions">
+            <button id="btn-diag" class="btn btn-ghost" type="button">Download diagnostics</button>
+          </div>
+          <div id="dump-box" class="notice" hidden>
+            <svg><use href="#i-warn"/></svg>
+            <span>A crash dump from an earlier failure is stored (<span id="dump-size"></span>).</span>
+          </div>
+          <div id="dump-actions" class="actions" hidden>
+            <button id="btn-dump" class="btn btn-ghost" type="button">Download crash dump</button>
+            <button id="btn-dump-erase" class="btn btn-ghost" type="button">Erase crash dump</button>
+          </div>
+        </article>
+
+        <article class="card danger-zone">
+          <header class="card-head"><h2>Maintenance</h2></header>
+          <p class="muted small">Both need the car in P. CAN forwarding stops for about two seconds while the bridge restarts.</p>
+          <div class="actions">
+            <button id="btn-reboot" class="btn btn-ghost" type="button">Restart bridge</button>
+            <button id="btn-factory" class="btn btn-danger" type="button">Factory reset</button>
+          </div>
+        </article>
+      </div>
+      <p class="footer muted small">Esp32LeafInverterBridge · GPL-3.0 · <span id="footer-version"></span></p>
+    </section>
+  </main>
+
+  <!-- ===================== Dialogs ===================== -->
+  <dialog id="dlg-login" aria-labelledby="dlg-login-title">
+    <form method="dialog" id="form-login" class="dialog-body">
+      <div class="dialog-icon"><svg><use href="#i-lock"/></svg></div>
+      <h2 id="dlg-login-title">Log in</h2>
+      <p class="muted small">Enter the admin password of this bridge.</p>
+      <input type="text" name="username" value="admin" autocomplete="username" hidden>
+      <label class="field"><span>Password</span>
+        <span class="input-wrap"><input id="login-password" name="password" type="password" autocomplete="current-password" required><button type="button" class="icon-btn reveal" aria-label="Show password" data-reveal="login-password"><svg><use href="#i-eye"/></svg></button></span>
+      </label>
+      <p id="login-error" class="error small" role="alert"></p>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" value="cancel" type="button" data-close>Cancel</button>
+        <button id="btn-login" class="btn btn-primary" type="submit">Log in</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-setpw" aria-labelledby="dlg-setpw-title">
+    <form method="dialog" id="form-setpw" class="dialog-body">
+      <div class="dialog-icon warn"><svg><use href="#i-warn"/></svg></div>
+      <h2 id="dlg-setpw-title">Set your own password</h2>
+      <p class="muted small">This bridge still uses its factory default password. Choose a new admin password; changes are blocked until you do.</p>
+      <input type="text" name="username" value="admin" autocomplete="username" hidden>
+      <label id="setpw-current" class="field" hidden><span>Current (factory) password</span><input name="current" type="password" autocomplete="current-password"></label>
+      <label class="field"><span>New password</span><input name="new" type="password" autocomplete="new-password" minlength="8" maxlength="64" required><small class="muted">8–64 characters.</small></label>
+      <label class="field"><span>Repeat new password</span><input name="repeat" type="password" autocomplete="new-password" required></label>
+      <p id="setpw-error" class="error small" role="alert"></p>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" type="button" data-close>Later</button>
+        <button class="btn btn-primary" type="submit">Set password</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-confirm" aria-labelledby="dlg-confirm-title">
+    <form method="dialog" class="dialog-body">
+      <div class="dialog-icon warn"><svg><use href="#i-warn"/></svg></div>
+      <h2 id="dlg-confirm-title">Are you sure?</h2>
+      <p id="dlg-confirm-text" class="muted"></p>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" value="cancel" type="submit">Cancel</button>
+        <button id="dlg-confirm-ok" class="btn btn-danger" value="ok" type="submit">Confirm</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
+  <noscript><p class="noscript">This page needs JavaScript.</p></noscript>
+</body>
+</html>

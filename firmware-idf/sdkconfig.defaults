@@ -4,6 +4,15 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_COMPILER_STACK_CHECK_MODE_NORM=y
+
+# Performance: full clock; Wi-Fi, lwIP and the web server stay on CPU 0 so CPU 1
+# (bridge task, CAN interrupts, MCP2515 task) is never disturbed by the network.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
+CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_0=y
+# httpd (7 clients + 3 internal) + captive DNS
+CONFIG_LWIP_MAX_SOCKETS=16
 
 # Firmware update: new images must confirm themselves or the bootloader rolls back.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
@@ -24,8 +33,13 @@ CONFIG_TWAI_ISR_CACHE_SAFE=y
 CONFIG_HTTPD_WS_SUPPORT=y
 CONFIG_HTTPD_WS_POST_HANDSHAKE_CB_SUPPORT=y
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
 
-# Core dump to flash for post-mortem analysis (idf.py coredump-info).
+# Core dump to flash for post-mortem analysis (download it from Device >
+# Diagnostics, or idf.py coredump-info).
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+
+# Reset on supply dips instead of running with a corrupt state.
+CONFIG_ESP_BROWNOUT_DET=y
 
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y

@@ -6,6 +6,8 @@
  * twai_node_transmit() until its on_tx_done callback fires, so frames are sent
  * from a fixed pool of slots that the callback hands back through a queue.
  * All callbacks run in the ISR (from IRAM, see CONFIG_TWAI_ISR_CACHE_SAFE).
+ * can_twai_start() is called from the bridge task on CPU 1, so the interrupt
+ * is allocated on (and served by) CPU 1.
  */
 #include "can_twai.h"
 
@@ -86,11 +88,27 @@ static bool IRAM_ATTR on_tx_done(twai_node_handle_t node, const twai_tx_done_eve
     return woken == pdTRUE;
 }
 
+static uint8_t IRAM_ATTR map_state(twai_error_state_t state)
+{
+    switch (state) {
+    case TWAI_ERROR_ACTIVE:
+        return BRIDGE_BUS_ACTIVE;
+    case TWAI_ERROR_WARNING:
+        return BRIDGE_BUS_WARNING;
+    case TWAI_ERROR_PASSIVE:
+        return BRIDGE_BUS_PASSIVE;
+    case TWAI_ERROR_BUS_OFF:
+    default:
+        return BRIDGE_BUS_OFF;
+    }
+}
+
 static bool IRAM_ATTR on_state_change(twai_node_handle_t node, const twai_state_change_event_data_t *edata,
                                       void *ctx)
 {
     (void)node;
     (void)ctx;
+    s_stats.state = map_state(edata->new_sta);
     if (edata->new_sta == TWAI_ERROR_BUS_OFF) {
         s_bus_off = true;
         s_stats.bus_off++;
@@ -161,6 +179,7 @@ esp_err_t can_twai_start(void)
         return err;
     }
     s_stats.running = true;
+    s_stats.state = BRIDGE_BUS_ACTIVE;
     ESP_LOGI(TAG, "VCM bus running on TX GPIO%d / RX GPIO%d at %d bit/s", CONFIG_BRIDGE_TWAI_TX_GPIO,
              CONFIG_BRIDGE_TWAI_RX_GPIO, BITRATE);
     return ESP_OK;
@@ -205,7 +224,14 @@ void can_twai_service(void)
     }
     if (s_recovering) {
         s_recovering = false;
+        s_stats.restarts++;
         ESP_LOGI(TAG, "recovered from bus-off");
+    }
+    twai_node_status_t status;
+    if (twai_node_get_info(s_node, &status, NULL) == ESP_OK) {
+        s_stats.tec = status.tx_error_count;
+        s_stats.rec = status.rx_error_count;
+        s_stats.state = map_state(status.state);
     }
     /* Safety net: once the driver reports every queued frame done, all slots must be
      * free again. If some were lost (e.g. around a bus-off) put them back. */
