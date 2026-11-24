@@ -1,0 +1,20 @@
+{
+  "name": "leaf_can",
+  "version": "2.0.0",
+  "description": "Hardware independent Nissan LEAF / e-NV200 EV-CAN messages and inverter-upgrade logic",
+  "keywords": "can, nissan, leaf, env200, inverter, ev",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Zektopic/Esp32LeafInverterBridge.git"
+  },
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src"
+  },
+  "export": {
+    "exclude": ["test"]
+  }
+}

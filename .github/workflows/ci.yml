@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  host-tests:
+    name: Library tests (host, ASan/UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: leaf_can (unit + differential vs v1.3.0)
+        run: |
+          cmake -S lib/leaf_can -B build/leaf_can -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined"
+          cmake --build build/leaf_can -j
+          ctest --test-dir build/leaf_can --output-on-failure
+      - name: bridge_settings
+        run: |
+          cmake -S lib/bridge_settings -B build/bridge_settings -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all"
+          cmake --build build/bridge_settings -j
+          ctest --test-dir build/bridge_settings --output-on-failure
+
+  esp-idf:
+    name: ESP-IDF firmware + QEMU end-to-end
+    runs-on: ubuntu-latest
+    container: espressif/idf:v6.1.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (hardware)
+        working-directory: firmware-idf
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py build
+      - name: Build (QEMU test variants)
+        working-directory: firmware-idf
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py -B build-qemu -D SDKCONFIG=build-qemu/sdkconfig \
+            -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.qemu" build
+          printf 'CONFIG_BRIDGE_SELFTEST_REQUIRE_CAN=y\n' > build-qemu-rb.overlay
+          idf.py -B build-qemu-rb -D SDKCONFIG=build-qemu-rb/sdkconfig \
+            -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.qemu;build-qemu-rb.overlay" build
+      - name: QEMU end-to-end (web, NVS, OTA, rollback)
+        working-directory: firmware-idf
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          python test/qemu_e2e.py --build build-qemu --rollback-image build-qemu-rb/leaf_inverter_bridge.bin
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firmware-idf
+          path: |
+            firmware-idf/build/leaf_inverter_bridge.bin
+            firmware-idf/build/bootloader/bootloader.bin
+            firmware-idf/build/partition_table/partition-table.bin
+            firmware-idf/build-qemu/qemu_e2e.log
+
+  arduino:
+    name: Arduino firmware (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [esp32dev, esp32dev-arduino2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install platformio
+      - name: Build
+        working-directory: firmware
+        run: pio run -e ${{ matrix.env }}
+      - name: Build (SERIAL_DEBUG)
+        if: matrix.env == 'esp32dev'
+        working-directory: firmware
+        run: PLATFORMIO_BUILD_FLAGS="-DSERIAL_DEBUG" pio run -e esp32dev

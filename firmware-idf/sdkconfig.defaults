@@ -1,0 +1,31 @@
+# Esp32LeafInverterBridge - ESP-IDF defaults
+CONFIG_IDF_TARGET="esp32"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# Firmware update: new images must confirm themselves or the bootloader rolls back.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+CONFIG_APP_PROJECT_VER_FROM_CONFIG=n
+
+# FreeRTOS / watchdog: reboot instead of hanging if the bridge task stalls.
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
+CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
+
+# TWAI keeps receiving while flash is written (NVS / OTA); callbacks are in IRAM.
+CONFIG_TWAI_ISR_CACHE_SAFE=y
+
+# HTTP server with WebSocket support for the configuration page.
+CONFIG_HTTPD_WS_SUPPORT=y
+CONFIG_HTTPD_WS_POST_HANDSHAKE_CB_SUPPORT=y
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+
+# Core dump to flash for post-mortem analysis (idf.py coredump-info).
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y

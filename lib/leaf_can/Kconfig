@@ -1,0 +1,38 @@
+menu "leaf_can (Nissan LEAF EV-CAN)"
+
+    config LEAF_CAN_TORQUE_110KW_PERMILLE
+        int "Drive torque multiplier for the 110 kW inverter (1/1000)"
+        range 500 2000
+        default 900
+        help
+            Positive torque requests in D are multiplied by this value / 1000.
+            900 is the value firmware v1.3.0 shipped with (it REDUCES torque).
+            The Dala upstream firmware uses 1320 (x1.32).
+
+    config LEAF_CAN_TORQUE_160KW_PERMILLE
+        int "Drive torque multiplier for the 160 kW inverter (1/1000)"
+        range 500 2000
+        default 1600
+        help
+            Upstream uses 1400 and suggests 1400..1600 for a more aggressive pedal.
+            Results that no longer fit the 12-bit signal are saturated.
+
+    config LEAF_CAN_REGEN_PERMILLE
+        int "Regen torque multiplier (1/1000)"
+        range 500 2000
+        default 1100
+
+    config LEAF_CAN_EMULATE_1F2_GROUP
+        bool "Synthesise the 0x1F2-driven ZE1 messages (0x1C2/0x108/0x1CB/0x1ED)"
+        default n
+        help
+            Off in firmware v1.3.0, which notes they must stay disabled with a 62 kWh pack.
+
+    config LEAF_CAN_MIN_SOC_PERMILLE
+        int "Do not modify torque below this SOC (0.1 %, 0 = off)"
+        range 0 1000
+        default 0
+        help
+            Fuse protection for small (24 kWh) packs; upstream used 700 (70 %).
+
+endmenu

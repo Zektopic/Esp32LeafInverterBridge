@@ -1,0 +1,11 @@
+{
+  "name": "bridge_settings",
+  "version": "2.0.0",
+  "description": "Settings model and web-form JSON parser of the Esp32 LEAF inverter bridge",
+  "license": "GPL-3.0-only",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": [{ "name": "leaf_can" }],
+  "build": { "srcDir": "src", "includeDir": "src" },
+  "export": { "exclude": ["test"] }
+}
