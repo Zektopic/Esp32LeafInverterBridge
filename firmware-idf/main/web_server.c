@@ -319,10 +319,10 @@ static void write_multipliers(json_writer_t *w, const leaf_inverter_config_t *cf
 static void write_status(json_writer_t *w)
 {
     bridge_status_t st;
-    bridge_settings_t s;
     bridge_get_status(&st);
-    bridge_get_settings(&s);
-    const uint8_t inv = s.value[BRIDGE_SETTING_INVERTER];
+    /* Mode and multipliers come from the same snapshot: what the bridge task has
+     * applied, not what was just saved (that takes effect within ~100 ms). */
+    const uint8_t inv = st.applied.value[BRIDGE_SETTING_INVERTER];
 
     jw_obj_begin(w);
     jw_kv_str(w, "firmware", esp_app_get_description()->version);

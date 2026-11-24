@@ -44,6 +44,7 @@ static esp_err_t s_start_err[LEAF_BUS_COUNT];
 
 /* Owned by the bridge task. */
 static leaf_inverter_t s_inverter;
+static bridge_settings_t s_applied; /* settings s_inverter currently runs with */
 static uint32_t s_ticks_per_us;
 static uint32_t s_high_water;
 static uint64_t s_lat_sum;
@@ -109,6 +110,7 @@ static void apply_pending_settings(void)
         leaf_inverter_config_t cfg;
         bridge_settings_to_inverter_config(&s, &cfg);
         leaf_inverter_set_config(&s_inverter, &cfg);
+        s_applied = s;
         ESP_LOGI(TAG, "settings applied: inverter %s",
                  bridge_setting_option_label(BRIDGE_SETTING_INVERTER, s.value[BRIDGE_SETTING_INVERTER]));
     }
@@ -165,6 +167,7 @@ static void publish_status(void)
     st.ac_charging = leaf_inverter_ac_charging(&s_inverter);
     st.soc_valid = s_inverter.soc_valid;
     st.soc_permille = s_inverter.soc_permille;
+    st.applied = s_applied;      /* published together with the config derived from it */
     st.config = s_inverter.cfg;
     st.inverter = s_inverter.stats;
     can_twai_get_stats(&st.bus[LEAF_BUS_VCM]);
@@ -245,6 +248,7 @@ esp_err_t bridge_start(const bridge_settings_t *settings)
         return ESP_ERR_NO_MEM;
     }
     s_settings = *settings;
+    s_applied = *settings;
     bridge_settings_to_inverter_config(settings, &cfg);
     leaf_inverter_init(&s_inverter, &cfg);
 
